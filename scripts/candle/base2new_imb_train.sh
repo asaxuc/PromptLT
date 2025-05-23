@@ -3,7 +3,7 @@
 # cd ../..
 
 # custom config
-DATA="/data/wxc/TIP-data"
+DATA="/path/to/your/data"
 TRAINER=Candle
 
 DATASET=$1
@@ -17,10 +17,10 @@ SHOTS=$8
 
 for SEED in 1 # 2 3
 do
-  DIR=/data/wxc/remote/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${CFG}/epoch${EPOCHS}/seed${SEED}
+  DIR=/path/to/your/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${CFG}/epoch${EPOCHS}/seed${SEED}
   if [ -d "$DIR" ]; then
       # echo "Oops! The results exist at ${DIR} (so skip this job)"
-      rm -rf /data/wxc/remote/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${CFG}/epoch${EPOCHS}/seed${SEED}
+      rm -rf /path/to/your/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${CFG}/epoch${EPOCHS}/seed${SEED}
   fi
     python train.py \
     --root ${DATA} \

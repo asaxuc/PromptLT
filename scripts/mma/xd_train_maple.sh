@@ -3,11 +3,12 @@
 #cd ../..
 
 # custom config
-DATA="/path/to/dataset/folder"
+DATA="/path/to/your/data"
 TRAINER=MaPLe
 
 DATASET=$1
 SEED=$2
+IMB=$2
 
 CFG=vit_b16_c2_ep5_batch4_2ctx_cross_datasets
 SHOTS=16
@@ -26,5 +27,6 @@ else
     --dataset-config-file configs/datasets/${DATASET}.yaml \
     --config-file configs/trainers/${TRAINER}/${CFG}.yaml \
     --output-dir ${DIR} \
-    DATASET.NUM_SHOTS ${SHOTS}
+    DATASET.NUM_SHOTS ${SHOTS}\
+    DATASET.IMBALANCE_RATIO ${IMB} \
 fi

@@ -141,12 +141,12 @@ def extend_cfg(cfg):
     cfg.TRAINER.MMADAPTER.ADAPTER_SCALE = 0.1
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"  # all, base or new
     
-    cfg.TRAINER.MMRL = CN()
-    cfg.TRAINER.MMRL.SCALE = 0.5
-    cfg.TRAINER.MMRL.REG_WEIGHT = 10.0
-    cfg.TRAINER.MMRL.REP_LAYERS = [] 
-    cfg.TRAINER.MMRL.N_REP_TOKENS = 2  # number of representation tokens per layer
-    cfg.TRAINER.MMRL.PREC = "fp16"  # fp16, fp32, amp
+    cfg.TRAINER.PromptLT = CN()
+    cfg.TRAINER.PromptLT.SCALE = 0.5
+    cfg.TRAINER.PromptLT.REG_WEIGHT = 10.0
+    cfg.TRAINER.PromptLT.REP_LAYERS = []
+    cfg.TRAINER.PromptLT.N_REP_TOKENS = 2  # number of representation tokens per layer
+    cfg.TRAINER.PromptLT.PREC = "fp16"  # fp16, fp32, amp
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"  # all, base or new
     cfg.TASK = "B2N" #B2N, CD, FS
 

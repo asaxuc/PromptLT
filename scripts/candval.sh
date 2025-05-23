@@ -1,8 +1,8 @@
 for SEED in 1 2 3
 do
 COMMON_DIR=${DATASET}/shots_${SHOTS}/${TRAINER}/${CFG}/seed${SEED}
-MODEL_DIR=/data/wxc/remote/Candle/output/base2new/train_base/${COMMON_DIR}
-DIR=/data/wxc/remote/Candle/output/base2new/test_${SUB}/${COMMON_DIR}
+MODEL_DIR=/path/to/your/Candle/output/base2new/train_base/${COMMON_DIR}
+DIR=/path/to/your/Candle/output/base2new/test_${SUB}/${COMMON_DIR}
 if [ -d "$DIR" ]; then
   echo "Oops! The results exist at ${DIR} (so skip this job)"
    echo "Evaluating model"

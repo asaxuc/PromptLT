@@ -303,9 +303,9 @@ class ModifiedResNet(nn.Module):
         return x
 
 
-class ResidualAttentionBlock_PLT(nn.Module):
+class ResidualAttentionBlock_PromptLT(nn.Module):
     def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None, text_layer=False, design_details=None,
-                 i=0):
+                 i=0, stage="train-base"):
         super().__init__()
 
         self.attn = nn.MultiheadAttention(d_model, n_head)
@@ -321,7 +321,8 @@ class ResidualAttentionBlock_PLT(nn.Module):
         self.layer = i + 1
         self.rep_tokens_layers = design_details["rep_tokens_layers"]
         self.text_layer = text_layer
-        self.n_rep_tokens = 2    
+        self.n_rep_tokens = 2
+        self.stage = stage
 
     def attention(self, x: torch.Tensor):
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
@@ -344,6 +345,66 @@ class ResidualAttentionBlock_PLT(nn.Module):
         else:
             return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
+    def FUSE_vision(self, x, shared_visual, extra_visual, stage):
+        # extra visual: (3, D)
+        # shared visual: (M, D)
+        prefix = x[:1, :, :] # 1, B, D
+        suffix = x[1:, :, :]
+        _,B,_ = prefix.shape
+        extra_visual = extra_visual.unsqueeze(dim=1).repeat(1,B,1) # 3, B, D
+        if stage == "base-train":
+            cls = prefix
+            similarity = torch.einsum("tbd,ibd->bit",extra_visual,cls) # B 1 3
+            simi_argmax = torch.argmax(similarity,dim=-1)[0] # B,1,1
+            combined_prompt = torch.cat([shared_visual, extra_visual.permute(1,0,2)[torch.arange(B).cuda(),simi_argmax].permute(1,0,2)],dim=0)
+            return torch.cat([prefix, combined_prompt, suffix])
+        elif stage == "base-test" or stage == "new-test":
+            cls = prefix
+            similarity = torch.einsum("tbd,ibd->bit",extra_visual,cls) # B 1 3
+            simi_softmax = torch.softmax(similarity,dim=-1) # B,1,1
+            combined_prompt = torch.cat([shared_visual, (extra_visual.permute(1,0,2)*simi_softmax).sum(dim=1).unsqueeze(dim=1).permute(1,0,2)],dim=0)
+            return torch.cat([prefix, combined_prompt, suffix])
+        else:
+            raise NotImplementedError()
+    def FUSE_text(self, x, shared_textual, extra_textual, stage):
+        # extra textual: (3, D)
+        # shared textual: (M, D)
+        prefix = x[:1, :, :] # 1, B, D
+        suffix = x[1 + self.n_rep_tokens:, :, :]
+        _,C,_ = prefix.shape
+        extra_textual = extra_textual.unsqueeze(dim=1).repeat(1,C,1) # 3, C, D
+        shared_textual = shared_textual.unsqueeze(dim=0).repeat(C,1,1) # C, M, D
+        if stage == "base-train":
+            cls = prefix
+            similarity = torch.einsum("tbd,ibd->bit",extra_textual,cls) # C 1 3
+            simi_argmax = torch.argmax(similarity,dim=-1)[0] # C,1,1
+            combined_prompt = torch.cat([shared_textual, extra_textual.permute(1,0,2)[torch.arange(C).cuda(),simi_argmax].permute(1, 0, 2)],dim=0)
+            return torch.cat([prefix, combined_prompt, suffix])
+
+        elif stage == "base-test":
+            cls = prefix
+            similarity_base = torch.einsum("tbd,ibd->bti", extra_textual, cls[:,C//2:,:])  # C/2 3 1
+            simi_softmax = torch.softmax(similarity_base,dim=-1) # C/2,3,1
+            combined_prompt_former = torch.cat([shared_textual[:C//2], (extra_textual.permute(1, 0, 2)[:C//2] * simi_softmax).sum(dim=1).unsqueeze(dim=1)], dim=0)
+            final_prompt_former = torch.cat([combined_prompt_former, shared_textual[C//2:]],dim=0)
+            final_prompt = torch.cat([final_prompt_former, shared_textual[:C//2]],dim=0)
+            return torch.cat([prefix, final_prompt.permute(1,0,2), suffix], dim=0)
+
+        elif stage == "new-test":
+            cls = prefix
+            similarity_base = torch.einsum("tbd,ibd->bti", extra_textual, cls[:,C//2:,:])  # C/2 3 1
+            simi_softmax = torch.softmax(similarity_base,dim=-1) # C/2,3,1
+            combined_prompt_former = torch.cat([shared_textual[:C//2], (extra_textual.permute(1, 0, 2)[:C//2] * simi_softmax).sum(dim=1).unsqueeze(dim=1)], dim=0)
+            simi_eot = torch.einsum("rbd,tbd->brt",shared_textual[:C//2], shared_textual[C//2:])
+            combined_prompt_latter = torch.einsum("brt,tbc->brc",simi_eot, combined_prompt_former)
+            final_prompt_latter = torch.cat([combined_prompt_latter, shared_textual[:C // 2]], dim=0)
+            final_prompt = torch.cat([final_prompt_latter, shared_textual[C // 2:]], dim=0)
+            return torch.cat([prefix, final_prompt.permute(1,0,2), suffix], dim=0)
+
+        else:
+            raise NotImplementedError()
+
+
     def forward(self, inputs: torch.Tensor):
         x = inputs[0]
         compound_rep_tokens = inputs[1]
@@ -351,42 +412,33 @@ class ResidualAttentionBlock_PLT(nn.Module):
         eot_index = inputs[3] if self.text_layer else None
      
         if len(compound_rep_tokens) > 0:
+            # [[share_vis, ex_vis, share_txt, ex_txt], [share_vis, ex_vis, share_txt, ex_txt], [share_vis, ex_vis, share_txt, ex_txt], [share_vis, ex_vis, share_txt, ex_txt], [share_vis, ex_vis, share_txt, ex_txt]]
             if not self.text_layer:
                 if self.layer in self.rep_tokens_layers:
-
                     if self.layer == self.rep_tokens_layers[0]:
                         prefix = x[:1, :, :]
                         suffix = x[1:, :, :]
                     else:
                         prefix = x[:1, :, :]
-                        suffix = x[1 + self.n_rep_tokens:, :, :] 
-                    visual_context = compound_rep_tokens[:,counter] 
-                    visual_context = visual_context.permute(1, 0, 2) 
-                    # print("vison",prefix.shape, visual_context.shape, suffix.shape)
-                    # print(prefix.shape, visual_context.shape, suffix.shape)
-                    x = torch.cat([prefix, visual_context, suffix], dim=0)
-                    
-                    counter += 1 
+                        suffix = x[1 + self.n_rep_tokens:, :, :]
+
+                    shared_vis = compound_rep_tokens[0]
+                    ex_vis = compound_rep_tokens[1]
+                    share_txt = compound_rep_tokens[2]
+                    ex_txt = compound_rep_tokens[3]
+
+                    shared_vis = shared_vis[:,counter]
+                    ex_vis = ex_vis[:,counter]
+                    share_txt = share_txt[:,counter]
+                    ex_txt = ex_txt[:,counter]
+
+                    # x = torch.cat([prefix, visual_context, suffix], dim=0)
+                    x = self.FUSE_vision(x, shared_vis, ex_vis, self.stage)
+                    counter += 1
                     
             else:
                 if self.layer in self.rep_tokens_layers:
 
-                    # -------------------------------------------------------------------------------------------------------------------------------------------- original
-                    # # insert tokens after bot
-                    # if self.layer == self.rep_tokens_layers[0]:
-                    #     width = x.shape[0]
-                    #     prefix = x[:1, :, :, :] # 1, batch, classnumber, C
-                    #     suffix = x[1:, :, :, :] # M, batch, classnumber, C
-                    # else:
-                    #     width = x.shape[0] - self.n_rep_tokens
-                    #     prefix = x[:1, :, :, :]
-                    #     suffix = x[1 + self.n_rep_tokens:, :, :, :] 
-                    # textual_context = compound_rep_tokens[:,counter] # B layer tokennumner C -> B tokennumber C
-                    # textual_context = textual_context.unsqueeze(dim=2).repeat(1,1,x.shape[2], 1).permute(1,0,2,3) # B tokennumber C -> B tokennumber classnumber C -> tokennumber B classnumber C
-                    # # print("text",prefix.shape, textual_context.shape, suffix.shape)
-                    # x = torch.cat([prefix, textual_context, suffix], dim=0)
-                    # --------------------------------------------------------------------------------------------------------------------------------------------- new version
-                    # insert tokens after bot
                     if self.layer == self.rep_tokens_layers[0]:
                         width = x.shape[0]
                         prefix = x[:1, :,  :] # 1, batch, classnumber, C
@@ -394,12 +446,20 @@ class ResidualAttentionBlock_PLT(nn.Module):
                     else:
                         width = x.shape[0] - self.n_rep_tokens
                         prefix = x[:1, :, :]
-                        suffix = x[1 + self.n_rep_tokens:, :, :] 
-                     
-                    textual_context = compound_rep_tokens[:,counter] # tokennumber dim
-                    textual_context = textual_context.permute(1,0,2)
-                    x = torch.cat([prefix, textual_context, suffix], dim=0)
-                    
+                        suffix = x[1 + self.n_rep_tokens:, :, :]
+
+                    shared_vis = compound_rep_tokens[0]
+                    ex_vis = compound_rep_tokens[1]
+                    share_txt = compound_rep_tokens[2]
+                    ex_txt = compound_rep_tokens[3]
+
+                    shared_vis = shared_vis[:, counter]
+                    ex_vis = ex_vis[:, counter]
+                    share_txt = share_txt[:, counter]
+                    ex_txt = ex_txt[:, counter]
+
+                    # x = torch.cat([prefix, textual_context, suffix], dim=0)
+                    x = self.FUSE_text(x, share_txt, ex_txt, self.stage)
                     counter += 1
 
                 if self.layer >= self.rep_tokens_layers[0]:
@@ -414,14 +474,14 @@ class ResidualAttentionBlock_PLT(nn.Module):
         return [x, compound_rep_tokens, counter, eot_index]  # return again as a list, so that nn.seq can work
 
 
-class Transformer_PLT(nn.Module):
+class Transformer_PromptLT(nn.Module):
     def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None, text_layer=False,
                  design_details=None):
         super().__init__()
         self.width = width
         self.layers = layers
         self.resblocks = nn.Sequential(
-            *[ResidualAttentionBlock_PLT(width, heads, attn_mask, text_layer, design_details, i) for i in
+            *[ResidualAttentionBlock_PromptLT(width, heads, attn_mask, text_layer, design_details, i) for i in
               range(layers)])
 
     def forward(self, x: torch.Tensor):
@@ -440,13 +500,11 @@ class VisionTransformer_PLT(nn.Module):
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = LayerNorm(width)
-        self.transformer = Transformer_PLT(width, layers, heads, design_details=design_details)
+        self.transformer = Transformer_PromptLT(width, layers, heads, design_details=design_details)
 
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
         self.proj_rep = nn.Parameter(scale * torch.randn(width, output_dim))
- 
-        # assert self.model in ["MMRL", "CLIP"], "Your model must be MMRL or CLIP "
 
     def forward(self, inputs): 
         x = inputs[0]
@@ -850,7 +908,7 @@ class CLIP(nn.Module):
                     heads=vision_heads,
                     output_dim=embed_dim
                 )
-            elif trainer == "MMRL":
+            elif trainer == "PromptLT":
                 self.visual = VisionTransformer_PLT(
                     input_resolution=image_resolution,
                     patch_size=vision_patch_size,
@@ -881,8 +939,8 @@ class CLIP(nn.Module):
                 heads=transformer_heads,
                 attn_mask=self.build_attention_mask()
             )
-        elif trainer == "MMRL":
-            self.transformer = Transformer_PLT(
+        elif trainer == "PromptLT":
+            self.transformer = Transformer_PromptLT(
                 width=transformer_width,
                 layers=transformer_layers,
                 heads=transformer_heads,

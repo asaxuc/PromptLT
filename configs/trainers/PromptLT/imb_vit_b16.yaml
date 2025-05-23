@@ -29,10 +29,8 @@ MODEL:
     NAME: "ViT-B/16"
 
 TRAINER:
-  MMRL:
-    SCALE: 0.7
-    REG_WEIGHT: 1.0
-    N_REP_TOKENS: 2
-    REP_LAYERS: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  PromptLT:
     PREC: "amp"
-    REP_DIM: 512
+    N_REP_TOKENS: 5
+    SHARED_LAYERS: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    SHARED_DIM: 32

@@ -3,7 +3,7 @@
 # cd ../..
 
 # custom config
-DATA="/data/wxc/TIP-data"
+DATA="/path/to/your/data"
 TRAINER=Candle
 
 DATASET=$1
@@ -19,8 +19,8 @@ SUB=$9
 for SEED in 1 # 2 3
 do
   COMMON_DIR=${CFG}/epoch${LOADEP}/seed${SEED}
-  MODEL_DIR=/data/wxc/remote/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${COMMON_DIR}
-  DIR=/data/wxc/remote/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/test_${SUB}/${COMMON_DIR}
+  MODEL_DIR=/path/to/your/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/train_base/${COMMON_DIR}
+  DIR=/path/to/your/Candle/output/base2new-imb/${DATASET}_imbratio${IMB}/${MASK}_${TRAINER}_${SCALE}/test_${SUB}/${COMMON_DIR}
   if [ -d "$DIR" ]; then
     echo "Oops! The results exist at ${DIR} (so skip this job). Test test AGAIN :)" 
   fi

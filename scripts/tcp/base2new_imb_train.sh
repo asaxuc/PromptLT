@@ -3,7 +3,7 @@
 #cd ../..
 
 # custom config
-DATA="/data/wxc/TIP-data"
+DATA="/path/to/your/data"
 TRAINER=TCP
 
 
@@ -16,7 +16,7 @@ SHOTS=100
 
 for SEED in 1 # 2 3
 do
-DIR=/data/wxc/remote/Candle/output/base2new/train_base/${DATASET}/imbratio${IMB}/shots_${SHOTS}/${TRAINER}/${CFG}/seed${SEED}
+DIR=/path/to/your/Candle/output/base2new/train_base/${DATASET}/imbratio${IMB}/shots_${SHOTS}/${TRAINER}/${CFG}/seed${SEED}
 if [ -d "$DIR" ]; then
     echo "Results are available in ${DIR}. Resuming..."
     python train.py \

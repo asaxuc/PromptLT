@@ -72,7 +72,7 @@ class CustomClassification(EvaluatorBase):
             f"* error: {err:.1f}%\n"
             f"* macro_f1: {macro_f1:.1f}%"
         )
-        pp = f"=> result * REPDIM:{self.cfg.TRAINER.MMRL.REP_DIM}-NUMSHOTS:{self.cfg.DATASET.NUM_SHOTS}-IMBRATIO:{self.cfg.DATASET.IMBALANCE_RATIO}-{self.cfg.TRAINER.PHASE}-{self.cfg.DATASET.SUBSAMPLE_CLASSES}-{self.cfg.DATASET.NAME}-{self.cfg.TRAINER.NAME}-{self.cfg.SEED} * total: {self._total:,} * correct: {self._correct:,} * accuracy: {acc:.1f}% * error: {err:.1f}% * macro_f1: {macro_f1:.1f}%\n"
+        pp = f"=> result * REPDIM:{self.cfg.TRAINER.PromptLT.REP_DIM}-NUMSHOTS:{self.cfg.DATASET.NUM_SHOTS}-IMBRATIO:{self.cfg.DATASET.IMBALANCE_RATIO}-{self.cfg.TRAINER.PHASE}-{self.cfg.DATASET.SUBSAMPLE_CLASSES}-{self.cfg.DATASET.NAME}-{self.cfg.TRAINER.NAME}-{self.cfg.SEED} * total: {self._total:,} * correct: {self._correct:,} * accuracy: {acc:.1f}% * error: {err:.1f}% * macro_f1: {macro_f1:.1f}%\n"
         with open("/data/wxc/youmi.txt","a") as f:
             f.write(pp)
         f.close()

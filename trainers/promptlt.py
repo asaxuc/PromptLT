@@ -37,7 +37,7 @@ CUSTOM_TEMPLATES = {
 }
 
 
-def load_clip_to_cpu(cfg, model_name="MMRL"):
+def load_clip_to_cpu(cfg, model_name="PromptLT"):
     backbone_name = cfg.MODEL.BACKBONE.NAME
     url = clip._MODELS[backbone_name]
     model_path = clip._download(url)
@@ -49,9 +49,9 @@ def load_clip_to_cpu(cfg, model_name="MMRL"):
 
     except RuntimeError:
         state_dict = torch.load(model_path, map_location="cpu")
-    design_details = {"trainer": "MMRL",
-                      "rep_tokens_layers": cfg.TRAINER.MMRL.REP_LAYERS,
-                      "n_rep_tokens": cfg.TRAINER.MMRL.N_REP_TOKENS,
+    design_details = {"trainer": "PromptLT",
+                      "rep_tokens_layers": cfg.TRAINER.PromptLT.REP_LAYERS,
+                      "n_rep_tokens": cfg.TRAINER.PromptLT.N_REP_TOKENS,
                       "vision_depth": 0,
                       "language_depth": 0, 
                       "vision_ctx": 0,
@@ -62,7 +62,7 @@ def load_clip_to_cpu(cfg, model_name="MMRL"):
     return model
 
 
-class TextEncoder_MMRL(nn.Module):
+class TextEncoder_PromptLT(nn.Module):
     def __init__(self, clip_model):
         super().__init__()
         self.transformer = clip_model.transformer
@@ -104,42 +104,15 @@ class TextEncoder_MMRL(nn.Module):
         
         return x
 
- 
-
-# def _get_text_base_features_zero_shot(cfg, classnames, clip_model, text_encoder):
-#     device = next(text_encoder.parameters()).device
-
-#     text_encoder = text_encoder.cuda()
-#     dataset = cfg.DATASET.NAME
-#     template = CUSTOM_TEMPLATES[dataset]
-
-#     with torch.no_grad():
-#         tokenized_prompts = []
-#         for text in tqdm(classnames, desc="Extracting text features"):
-#             tokens = clip.tokenize(template.format(text.replace('_', ' ')))  # (n_tokens)
-#             tokens = tokens.to(device)
-#             tokenized_prompts.append(tokens)
-#         tokenized_prompts = torch.cat(tokenized_prompts)  # (n_classes, n_tokens)
-
-#         embeddings = clip_model.token_embedding(tokenized_prompts).type(
-#             clip_model.dtype)  # (n_classes, n_tokens, embed_dim)
-#         outputs = text_encoder(embeddings.cuda(), tokenized_prompts.cuda())
-
-#         text_embeddings = outputs
-
-#     text_encoder = text_encoder.to(device)
-#     return text_embeddings
-
-
 def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
-class MultiModalRepresentationLearner(nn.Module):
+class PromptLearner(nn.Module):
     def __init__(self, cfg, classnames, clip_model):
         super().__init__()
 
-        n_shared_token = cfg.TRAINER.MMRL.N_REP_TOKENS
+        n_shared_token = cfg.TRAINER.PromptLT.N_REP_TOKENS
         self.dtype = clip_model.dtype
 
         text_dim = clip_model.ln_final.weight.shape[0]
@@ -147,9 +120,9 @@ class MultiModalRepresentationLearner(nn.Module):
 
         clip_imsize = clip_model.visual.input_resolution
         cfg_imsize = cfg.INPUT.SIZE[0]
-        n_shared_dim = cfg.TRAINER.MMRL.REP_DIM
+        n_shared_dim = cfg.TRAINER.PromptLT.REP_DIM
 
-        self.rep_layers_length = len(cfg.TRAINER.MMRL.REP_LAYERS)  # max=12
+        self.rep_layers_length = len(cfg.TRAINER.PromptLT.REP_LAYERS)  # max=12
         assert cfg_imsize == clip_imsize, f"cfg_imsize ({cfg_imsize}) must equal to clip_imsize ({clip_imsize})"
         dataset = cfg.DATASET.NAME
         template = CUSTOM_TEMPLATES[dataset]
@@ -206,15 +179,15 @@ class MultiModalRepresentationLearner(nn.Module):
 class CustomCLIP(nn.Module):
     def __init__(self, cfg, classnames, clip_model):
         super().__init__()
-        self.scale = cfg.TRAINER.MMRL.SCALE
+        self.scale = cfg.TRAINER.PromptLT.SCALE
         self.cfg = cfg
         self.classnames = classnames
-        self.prompt_learner = MultiModalRepresentationLearner(cfg, classnames, clip_model).type(clip_model.dtype)
+        self.prompt_learner = PromptLearner(cfg, classnames, clip_model).type(clip_model.dtype)
         self.tokenized_prompts = self.prompt_learner.tokenized_prompts
         self.register_buffer("prompt_embeddings", self.prompt_learner.prompt_embeddings)
         self.image_encoder = clip_model.visual
         self.logit_scale = clip_model.logit_scale
-        self.text_encoder = TextEncoder_MMRL(clip_model)
+        self.text_encoder = TextEncoder_PromptLT(clip_model)
         self.dtype = clip_model.dtype
         self.text_features_for_inference = None
         self.compound_rep_tokens_text_for_inference = None
@@ -299,15 +272,6 @@ class CustomCLIP(nn.Module):
             after_tokens_visual, after_tokens_text = self.FUSE(after_tokens_visual, after_tokens_text, extra_vision, extra_text, class_info, need_repeat) # class_info is str
             text_features = self.text_encoder(self.prompt_embeddings, self.tokenized_prompts, after_tokens_text)
 
-            # if self.text_features_for_inference is None:
-            #     self.compound_rep_tokens_text_for_inference, self.compound_rep_tokens_visual_for_inference, extra_text, extra_vision = self.prompt_learner()
-            #     # after_tokens_visual, after_tokens_text = self.FUSE(after_tokens_visual, after_tokens_text, extra_vision, extra_text)
-            #     self.text_features_for_inference = self.text_encoder(self.prompt_embeddings, self.tokenized_prompts,
-            #                                                          self.compound_rep_tokens_text_for_inference)
-            #
-            # after_tokens_text, after_tokens_visual = self.compound_rep_tokens_text_for_inference, self.compound_rep_tokens_visual_for_inference
-            # text_features = self.text_features_for_inference
-
         image_features = self.image_encoder([image.type(self.dtype), after_tokens_visual])
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
@@ -319,9 +283,9 @@ class CustomCLIP(nn.Module):
         return logits, image_features, text_features
 
 
-class MMRL_Loss(_Loss):
+class PromptLT_Loss(_Loss):
     def __init__(self, reg_weight=1.0, scale=0.7):
-        super(MMRL_Loss, self).__init__()
+        super(PromptLT_Loss, self).__init__()
         self.reg_weight = reg_weight
         self.scale = scale
 
@@ -334,9 +298,9 @@ import pickle
 
 
 @TRAINER_REGISTRY.register()
-class MMRL(TrainerX):
+class PromptLT(TrainerX):
     def check_cfg(self, cfg):
-        assert cfg.TRAINER.MMRL.PREC in ["fp16", "fp32", "amp"]
+        assert cfg.TRAINER.PromptLT.PREC in ["fp16", "fp32", "amp"]
 
     def save_variable(self, v, fp):
         f = open(fp, 'wb')
@@ -360,9 +324,9 @@ class MMRL(TrainerX):
         self.num_classes = len(classnames)
 
         print(f"Loading CLIP (backbone: {cfg.MODEL.BACKBONE.NAME})")
-        clip_model = load_clip_to_cpu(cfg, "MMRL")
+        clip_model = load_clip_to_cpu(cfg, "PromptLT")
 
-        if cfg.TRAINER.MMRL.PREC == "fp32" or cfg.TRAINER.MMRL.PREC == "amp":
+        if cfg.TRAINER.PromptLT.PREC == "fp32" or cfg.TRAINER.PromptLT.PREC == "amp":
             # CLIP's default precision is fp16
             clip_model.float()
 
@@ -444,15 +408,15 @@ class MMRL(TrainerX):
 
         # self.image_encoder_clip.to(self.device)
 
-        reg_weight = cfg.TRAINER.MMRL.REG_WEIGHT
-        scale = cfg.TRAINER.MMRL.SCALE
+        reg_weight = cfg.TRAINER.PromptLT.REG_WEIGHT
+        scale = cfg.TRAINER.PromptLT.SCALE
 
         # NOTE: only give representation_learner to the optimizer
         self.optim = build_optimizer(self.model, cfg.OPTIM)
         self.sched = build_lr_scheduler(self.optim, cfg.OPTIM)
         self.register_model("MultiModalPromptLearner", self.model, self.optim, self.sched)
 
-        self.scaler = GradScaler() if cfg.TRAINER.MMRL.PREC == "amp" else None
+        self.scaler = GradScaler() if cfg.TRAINER.PromptLT.PREC == "amp" else None
 
         # Note that multi-gpu training could be slow because CLIP's size is
         # big, which slows down the copy operation in DataParallel
@@ -465,7 +429,7 @@ class MMRL(TrainerX):
         # cls_num_list = self.dm.dataset.get_cls_num_list()
         # cls_num_list_new = [0 for i in range(self.num_classes_all - self.num_classes_train)]
         # cls_num_list.extend(cls_num_list_new)
-        self.criterion = MMRL_Loss(reg_weight=reg_weight, scale=scale)  # LogitAdjustedLoss(cls_num_list=cls_num_list)
+        self.criterion = PromptLT_Loss(reg_weight=reg_weight, scale=scale)  # LogitAdjustedLoss(cls_num_list=cls_num_list)
 
     def model_inference(self, input):
         output = self.model(input, self.cfg.DATASET.SUBSAMPLE_CLASSES)[0]

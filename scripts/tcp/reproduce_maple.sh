@@ -3,7 +3,7 @@
 #cd ../..
 
 # custom config
-DATA="/path/to/dataset/folder"
+DATA="/path/to/your/data"
 TRAINER=MaPLe
 
 DATASET=$1
@@ -52,7 +52,4 @@ else
     --eval-only \
     DATASET.NUM_SHOTS ${SHOTS} \
     DATASET.SUBSAMPLE_CLASSES ${SUB_novel}
-
-
-
 fi

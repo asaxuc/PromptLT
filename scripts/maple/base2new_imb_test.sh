@@ -3,7 +3,7 @@
 #cd ../..
 
 # custom config
-DATA="/data/wxc/TIP-data"
+DATA="/path/to/your/data"
 TRAINER=MaPLe
 
 DATASET=$1
@@ -18,8 +18,8 @@ SUB=$5
 for SEED in 1 # 2 3
 do
 COMMON_DIR=${DATASET}/imbratio1${IMB}/shots_${SHOTS}/${TRAINER}/${CFG}/seed${SEED}
-MODEL_DIR=/data/wxc/remote/Candle/output/base2new/train_base/${COMMON_DIR}
-DIR=/data/wxc/remote/Candle/output/base2new/test_${SUB}/${COMMON_DIR}
+MODEL_DIR=/path/to/your/Candle/output/base2new/train_base/${COMMON_DIR}
+DIR=/path/to/your/Candle/output/base2new/test_${SUB}/${COMMON_DIR}
 if [ -d "$DIR" ]; then
   echo "Oops! The results exist at ${DIR} (so skip this job)"
 fi 
