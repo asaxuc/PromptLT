@@ -11,7 +11,7 @@ Some modifications here:
 3. Equation 8: exchange t+ and v+ 
 4. EOF-token -> EOT-token
 
-##### <font color=Red>Thanks for your caring!</font>
+##### <font color=Red>Apologize again for potential misunderstanding. Thanks for your caring!</font>
 
 ## What's New:
 2025.5 We release the code !
